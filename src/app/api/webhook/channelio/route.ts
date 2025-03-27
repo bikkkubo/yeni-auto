@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateEmbedding, generateResponseDraft } from '@/lib/openai/client';
-import { findSimilarDocuments } from '@/lib/supabase/client';
 import { sendResponseToOperators } from '@/lib/slack/client';
-import { verifyWebhookSignature } from '@/lib/utils/errorHandler';
 
 // Check if we are in build mode
 const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
@@ -82,9 +79,6 @@ export async function POST(request: NextRequest) {
     console.log('Channelio Webhook Headers:', Object.fromEntries(request.headers.entries()));
     console.log('Channelio Webhook Payload:', JSON.stringify(body, null, 2));
     
-    // Create a fake inquiry for testing only
-    const testInquiry = "This is a test inquiry. How can you help me?";
-    
     // Send a notification to Slack with the payload structure
     try {
       await sendResponseToOperators(
@@ -97,15 +91,6 @@ export async function POST(request: NextRequest) {
     } catch (slackError) {
       console.error('Failed to send to Slack:', slackError);
     }
-    
-    // TEMPORARILY DISABLE SIGNATURE CHECK FOR TESTING
-    // const signature = request.headers.get('x-channelio-signature') || '';
-    // if (!verifyWebhookSignature(signature, rawBody)) {
-    //   return new NextResponse(
-    //     JSON.stringify({ error: 'Invalid signature' }),
-    //     { status: 401 }
-    //   );
-    // }
     
     // For debugging, let's just return a successful response to acknowledge the webhook
     return NextResponse.json({ 
