@@ -56,6 +56,24 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
     const body = JSON.parse(rawBody);
     
+    // Log the entire request payload and headers for inspection
+    console.log('Channelio Webhook Headers:', Object.fromEntries(request.headers.entries()));
+    console.log('Channelio Webhook Payload:', JSON.stringify(body, null, 2));
+    
+    // Send a notification to Slack with the payload structure
+    if (process.env.SLACK_ERROR_CHANNEL_ID) {
+      try {
+        await sendResponseToOperators(
+          'Webhook Payload Inspector', 
+          `Received Channelio webhook payload:\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\``,
+          'This is a test message to inspect the Channelio payload structure.',
+          ''
+        );
+      } catch (slackError) {
+        console.error('Failed to send payload inspection to Slack:', slackError);
+      }
+    }
+    
     // 2. Verify webhook signature (if needed)
     const signature = request.headers.get('x-channelio-signature') || '';
     if (!verifyWebhookSignature(signature, rawBody)) {
@@ -65,17 +83,32 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 3. Extract inquiry details
-    // Note: This is a simplified example. Adjust according to actual Channelio webhook format
-    const { 
-      customerName = 'Unknown Customer',
-      inquiry = '',
-      chatLink = ''
+    // 3. Extract inquiry details - This is tentative, based on examining the payload
+    // We'll need to update this once we've seen the actual payload structure
+    const {
+      data = {},
+      event = '',
     } = body;
+    
+    // Try different possible field paths based on common webhook structures
+    let customerName = 'Unknown Customer';
+    let inquiry = '';
+    let chatLink = '';
+    
+    // Check if this is a message event
+    if (event === 'message.created' && data) {
+      // Possible structures - these are guesses until we see the actual payload
+      inquiry = data.message?.content || data.content || data.text || data.body || '';
+      customerName = data.customer?.name || data.user?.name || data.sender?.name || 'Unknown Customer';
+      chatLink = data.conversation?.url || data.url || data.link || '';
+    }
     
     if (!inquiry) {
       return new NextResponse(
-        JSON.stringify({ error: 'No inquiry text provided' }),
+        JSON.stringify({ 
+          error: 'No inquiry text identified in payload',
+          received: body
+        }),
         { status: 400 }
       );
     }
