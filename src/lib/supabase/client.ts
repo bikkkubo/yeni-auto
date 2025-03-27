@@ -17,7 +17,7 @@ export const supabaseClient = createClient(
 export interface Document {
   id: string;
   content: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 /**
