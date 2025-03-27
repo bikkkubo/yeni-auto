@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendResponseToOperators } from '@/lib/slack/client';
+import { generateEmbedding, generateResponseDraft, findSimilarDocuments } from '@/lib/ai/openai';
 
 // Check if we are in build mode
 const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
@@ -11,10 +12,10 @@ async function handleApiError(error: Error | unknown, context: string) {
   // Note: In a production app, we'd want to notify Slack here
   // but we're avoiding the circular dependency with the errorHandler
   
-  const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+  const errorMessage = error instanceof Error ? error.message : '不明なエラーが発生しました';
   
   return new NextResponse(
-    JSON.stringify({ error: 'Internal Server Error', details: errorMessage }),
+    JSON.stringify({ error: '内部サーバーエラー', details: errorMessage }),
     { status: 500 }
   );
 }
@@ -42,112 +43,63 @@ function checkRequiredEnvVars() {
 export async function POST(request: NextRequest) {
   console.log(`[${new Date().toISOString()}] Received POST request for: ${request.url}`);
   
-  // Return dummy response during build time
   if (isBuildTime) {
     return NextResponse.json({ status: 'ok', buildTime: true });
   }
   
   try {
-    // Check required environment variables
     checkRequiredEnvVars();
     
-    // Log the request headers and method
-    console.log(`[${new Date().toISOString()}] Request method: ${request.method}`);
-    console.log(`[${new Date().toISOString()}] Request headers:`, Object.fromEntries(request.headers.entries()));
-    
-    // Check if this is a Channelio request with token in URL
-    const url = new URL(request.url);
-    const token = url.searchParams.get('token');
-    if (token) {
-      console.log(`[${new Date().toISOString()}] Found token in URL: ${token}`);
-    }
-    
-    // 1. Get the raw request body for signature verification
     const rawBody = await request.text();
-    console.log(`[${new Date().toISOString()}] Request body:`, rawBody.substring(0, 500) + (rawBody.length > 500 ? '...' : ''));
-    
     let body;
     try {
       body = JSON.parse(rawBody);
     } catch (parseError) {
-      console.error('Failed to parse JSON body:', parseError);
-      console.log('Raw body content:', rawBody);
-      body = {}; // Set default empty object if parsing fails
-    }
-    
-    // Log the entire request payload and headers for inspection
-    console.log('Channelio Webhook Headers:', Object.fromEntries(request.headers.entries()));
-    console.log('Channelio Webhook Payload:', JSON.stringify(body, null, 2));
-    
-    // Send a notification to Slack with the payload structure
-    try {
-      await sendResponseToOperators(
-        'Webhook Received', 
-        `Received Channelio webhook:\n\nURL: ${request.url}\n\nToken: ${token || 'None'}\n\nPayload:\n\`\`\`json\n${JSON.stringify(body, null, 2) || rawBody}\n\`\`\``,
-        'This is a test message to show the webhook was received.',
-        ''
-      );
-      console.log('Successfully sent Slack notification');
-    } catch (slackError) {
-      console.error('Failed to send to Slack:', slackError);
-    }
-    
-    // For debugging, let's just return a successful response to acknowledge the webhook
-    return NextResponse.json({ 
-      success: true,
-      message: 'Webhook received successfully',
-      timestamp: new Date().toISOString()
-    });
-    
-    /* Original processing logic commented out for debugging
-    // 3. Extract inquiry details - This is tentative, based on examining the payload
-    // We'll need to update this once we've seen the actual payload structure
-    const {
-      data = {},
-      event = '',
-    } = body;
-    
-    // Try different possible field paths based on common webhook structures
-    let customerName = 'Unknown Customer';
-    let inquiry = '';
-    let chatLink = '';
-    
-    // Check if this is a message event
-    if (event === 'message.created' && data) {
-      // Possible structures - these are guesses until we see the actual payload
-      inquiry = data.message?.content || data.content || data.text || data.body || '';
-      customerName = data.customer?.name || data.user?.name || data.sender?.name || 'Unknown Customer';
-      chatLink = data.conversation?.url || data.url || data.link || '';
-    }
-    
-    if (!inquiry) {
+      console.error('JSONの解析に失敗:', parseError);
       return new NextResponse(
-        JSON.stringify({ 
-          error: 'No inquiry text identified in payload',
-          received: body
-        }),
+        JSON.stringify({ error: '不正なJSONペイロード' }),
         { status: 400 }
       );
     }
+
+    // Extract inquiry details from the webhook payload
+    const inquiry = body.message?.text || '';
+    const customerName = body.user?.name || '不明な顧客';
+    const chatId = body.chat?.id || '';
     
-    // 4. Generate embedding for the inquiry
+    if (!inquiry) {
+      return new NextResponse(
+        JSON.stringify({ error: '問い合わせ内容が見つかりません' }),
+        { status: 400 }
+      );
+    }
+
+    // Generate embedding and find similar documents
     const embedding = await generateEmbedding(inquiry);
-    
-    // 5. Find similar documents using vector search
     const similarDocuments = await findSimilarDocuments(embedding);
     
-    // 6. Generate response draft using RAG
+    // Generate response draft using RAG
     const responseDraft = await generateResponseDraft(inquiry, similarDocuments);
-    
-    // 7. Send to Slack for operator review
-    await sendResponseToOperators(customerName, inquiry, responseDraft, chatLink);
-    
-    // 8. Return success response
-    return NextResponse.json({ success: true });
-    */
+
+    // Format the message in the expected structure
+    const formattedMessage = `問い合わせ内容:\n${inquiry}\n\nAI生成の回答案:\n${responseDraft}\n\nお客様ID: test-customer-123 | 会話ID: ${chatId} | 送信元: web`;
+
+    // Send to Slack for operator review
+    await sendResponseToOperators(
+      'お客様からの新規問い合わせ',
+      inquiry,
+      responseDraft,
+      chatId
+    );
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Webhookの処理が完了しました',
+      timestamp: new Date().toISOString()
+    });
     
   } catch (error) {
-    console.error('Error handling webhook:', error);
+    console.error('Webhookの処理中にエラーが発生:', error);
     return handleApiError(error, 'channelio-webhook');
   }
 }
@@ -171,19 +123,19 @@ export async function GET(request: NextRequest) {
   // Try to send a test notification to Slack
   try {
     await sendResponseToOperators(
-      'GET Request Test', 
-      `Received GET request to webhook endpoint:\n\nURL: ${request.url}\n\nToken: ${token || 'None'}`,
-      'This confirms the endpoint is accessible via GET.',
+      'GETリクエストのテスト', 
+      `webhookエンドポイントにGETリクエストを受信:\n\nURL: ${request.url}\n\nトークン: ${token || 'なし'}`,
+      'エンドポイントがGETリクエストで正常にアクセス可能です。',
       ''
     );
-    console.log('Successfully sent Slack notification for GET request');
+    console.log('GETリクエストのSlack通知を送信しました');
   } catch (slackError) {
-    console.error('Failed to send GET test to Slack:', slackError);
+    console.error('GETテストのSlack通知の送信に失敗:', slackError);
   }
   
   return NextResponse.json({ 
     status: 'ok',
-    message: 'Channelio webhook is ready to receive inquiries',
+    message: 'Channelioのwebhookは問い合わせを受け付ける準備ができています',
     timestamp: new Date().toISOString()
   });
 } 

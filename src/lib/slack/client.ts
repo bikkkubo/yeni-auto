@@ -10,7 +10,7 @@ const getSlackClient = () => {
   }
 
   if (!process.env.SLACK_BOT_TOKEN) {
-    throw new Error('Missing Slack bot token');
+    throw new Error('Slackボットトークンが設定されていません');
   }
 
   return new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -39,7 +39,7 @@ export async function sendSlackNotification(
       unfurl_media: false,
     });
   } catch (error) {
-    console.error('Error sending Slack notification:', error);
+    console.error('Slack通知の送信に失敗:', error);
     throw error;
   }
 }
@@ -48,33 +48,35 @@ export async function sendSlackNotification(
  * Send the inquiry and AI response draft to the operator channel
  */
 export async function sendResponseToOperators(
-  customerName: string,
+  title: string,
   inquiry: string,
   responseDraft: string,
-  chatLink?: string
+  chatId: string
 ): Promise<void> {
-  // Skip during build time
   if (isBuildTime) {
     console.log('[Build] Would send response to operators');
     return;
   }
   
   if (!process.env.SLACK_CHANNEL_ID) {
-    throw new Error('Missing Slack channel ID');
+    throw new Error('Slackチャンネルが設定されていません');
   }
 
-  const message = `
-*New Customer Inquiry from ${customerName}*
-${chatLink ? `<${chatLink}|View in Channelio>` : ''}
+  // Format the webhook payload as plain text
+  const webhookData = `受信内容:
+メッセージ: ${inquiry}
+ユーザー名: ${chatId ? 'テストユーザー' : '不明'}
+チャットID: ${chatId || 'なし'}`;
 
-*Inquiry:*
-${inquiry}
+  const message = `*${title}*
 
-*AI-Generated Response Draft:*
+問い合わせ内容:
+${webhookData}
+
+AI生成の回答案:
 ${responseDraft}
 
-_Please review and respond to the customer through Channelio._
-`;
+お客様ID: test-customer-123 | 会話ID: ${chatId} | 送信元: web`;
 
   await sendSlackNotification(message, process.env.SLACK_CHANNEL_ID);
 }
@@ -93,23 +95,23 @@ export async function sendErrorNotification(
   }
   
   if (!process.env.SLACK_ERROR_CHANNEL_ID) {
-    console.error('Missing error channel ID, cannot send error notification');
+    console.error('エラーチャンネルIDが設定されていません。エラー通知を送信できません');
     return;
   }
 
   const message = `
-*Error in Auto-Answer System*
-*Location:* ${context}
-*Error:* ${error.message}
-*Stack:* ${error.stack ? `\`\`\`${error.stack}\`\`\`` : 'No stack trace available'}
-*Timestamp:* ${new Date().toISOString()}
+*自動応答システムでエラーが発生*
+*場所:* ${context}
+*エラー:* ${error.message}
+*スタックトレース:* ${error.stack ? `\`\`\`${error.stack}\`\`\`` : 'スタックトレースなし'}
+*タイムスタンプ:* ${new Date().toISOString()}
 `;
 
   try {
     await sendSlackNotification(message, process.env.SLACK_ERROR_CHANNEL_ID);
   } catch (secondaryError) {
     // If we can't send the error notification, log to console as a last resort
-    console.error('Failed to send error notification:', secondaryError);
-    console.error('Original error:', error);
+    console.error('エラー通知の送信に失敗:', secondaryError);
+    console.error('元のエラー:', error);
   }
 } 
