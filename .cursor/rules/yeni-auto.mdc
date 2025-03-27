@@ -1,0 +1,68 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Goal
+Create a new automated response system from scratch. The system will receive inquiries from Channelio via Webhook, use AI (OpenAI GPT-3.5) and a knowledge base (Supabase Vector DB with past QA/FAQ) to generate response drafts (RAG), and post them to Slack for operator review.
+
+# Core Technologies
+- Framework: Next.js (App Router)
+- Language: TypeScript
+- Hosting: Vercel
+- Database: Supabase (PostgreSQL with pgvector for vector search)
+- AI Model: OpenAI GPT-3.5 Turbo API
+- Notification: Slack API
+- Styling: Tailwind CSS (Optional, but recommended for faster UI development if any UI is needed later)
+
+# Architecture
+- Build a Next.js application deployable on Vercel.
+- Set up a Supabase project with a `documents` table (columns: `id`, `content` (text), `metadata` (jsonb), `embedding` (vector)). Enable the `pgvector` extension in Supabase.
+- Create an API route (e.g., `/api/webhook/channelio`) in Next.js to handle incoming webhooks from Channelio.
+- Implement the RAG process within the API route:
+    1. Receive and validate the inquiry from the Webhook.
+    2. Generate an embedding for the inquiry text (using OpenAI Embeddings API).
+    3. Implement a Supabase function or use Supabase Client directly to perform similarity search (cosine distance) against the `documents` table using the generated embedding and pgvector.
+    4. Construct a prompt including the original inquiry and the retrieved relevant documents.
+    5. Call the OpenAI Chat Completions API (GPT-3.5 Turbo) with the prompt to generate a response draft.
+    6. Send the inquiry details (Customer Name, Chat Link if available) and the AI-generated response draft to a designated Slack channel using the Slack API.
+- Implement robust error handling using `try...catch` blocks for all external calls (Supabase, OpenAI, Slack) and webhook processing.
+- Implement error notification: On error, send detailed error messages (location, message, timestamp) to a separate, designated Slack channel (`SLACK_ERROR_CHANNEL_ID`).
+
+# Implementation Steps
+1.  Initialize a new Next.js project with TypeScript (and optionally Tailwind CSS).
+2.  Install necessary dependencies: `@supabase/supabase-js`, `openai`, `@slack/web-api`.
+3.  Set up Supabase project, create the `documents` table, and enable `pgvector`.
+4.  Configure environment variables (`.env.local` and Vercel) for all secrets (Supabase URL/keys, OpenAI API Key, Slack Bot Token, Slack Channel IDs).
+5.  Implement the Channelio Webhook API route (`/api/webhook/channelio`).
+6.  Implement the logic for embedding generation and Supabase vector search.
+7.  Implement the logic for calling the OpenAI API with the RAG prompt.
+8.  Implement the logic for sending notifications to the operator Slack channel.
+9.  Implement comprehensive error handling and notification to the error Slack channel.
+10. Write helper functions/modules for Supabase client, OpenAI client, Slack client, embedding generation, and vector search to keep the API route clean.
+11. Set up project for Vercel deployment.
+
+# Code Requirements
+- Write clean, modular, readable, and maintainable TypeScript code.
+- Follow Next.js App Router conventions.
+- Use async/await for asynchronous operations.
+- Implement proper typing for functions and data structures.
+- Strictly use environment variables for all secrets. No hardcoded credentials.
+- Add JSDoc comments or standard comments for clarity.
+- Set up ESLint and Prettier for code quality and consistent formatting.
+
+# Environment Variables Needed
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY` depending on usage context)
+- `OPENAI_API_KEY`
+- `SLACK_BOT_TOKEN`
+- `SLACK_CHANNEL_ID` (for operator notifications)
+- `SLACK_ERROR_CHANNEL_ID` (for error notifications)
+- `OPENAI_EMBEDDING_MODEL` (e.g., `text-embedding-ada-002` or newer)
+
+# Key Functions to Implement
+- `generateEmbedding(text: string): Promise<number[]>`
+- `findSimilarDocuments(embedding: number[], limit: number): Promise<Document[]>` (where Document includes `content` and `metadata`)
+- `generateResponseDraft(inquiry: string, documents: Document[]): Promise<string>`
+- `sendSlackNotification(message: string, channelId: string): Promise<void>`
+- The main webhook handler function in the API route.
