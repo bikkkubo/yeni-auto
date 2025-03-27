@@ -43,7 +43,7 @@ function checkRequiredEnvVars() {
 }
 
 export async function POST(request: NextRequest) {
-  console.log(`[${new Date().toISOString()}] Received request for: ${request.url}`);
+  console.log(`[${new Date().toISOString()}] Received POST request for: ${request.url}`);
   
   // Return dummy response during build time
   if (isBuildTime) {
@@ -58,39 +58,63 @@ export async function POST(request: NextRequest) {
     console.log(`[${new Date().toISOString()}] Request method: ${request.method}`);
     console.log(`[${new Date().toISOString()}] Request headers:`, Object.fromEntries(request.headers.entries()));
     
+    // Check if this is a Channelio request with token in URL
+    const url = new URL(request.url);
+    const token = url.searchParams.get('token');
+    if (token) {
+      console.log(`[${new Date().toISOString()}] Found token in URL: ${token}`);
+    }
+    
     // 1. Get the raw request body for signature verification
     const rawBody = await request.text();
     console.log(`[${new Date().toISOString()}] Request body:`, rawBody.substring(0, 500) + (rawBody.length > 500 ? '...' : ''));
     
-    const body = JSON.parse(rawBody);
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (parseError) {
+      console.error('Failed to parse JSON body:', parseError);
+      console.log('Raw body content:', rawBody);
+      body = {}; // Set default empty object if parsing fails
+    }
     
     // Log the entire request payload and headers for inspection
     console.log('Channelio Webhook Headers:', Object.fromEntries(request.headers.entries()));
     console.log('Channelio Webhook Payload:', JSON.stringify(body, null, 2));
     
+    // Create a fake inquiry for testing only
+    const testInquiry = "This is a test inquiry. How can you help me?";
+    
     // Send a notification to Slack with the payload structure
-    if (process.env.SLACK_ERROR_CHANNEL_ID) {
-      try {
-        await sendResponseToOperators(
-          'Webhook Payload Inspector', 
-          `Received Channelio webhook payload:\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\``,
-          'This is a test message to inspect the Channelio payload structure.',
-          ''
-        );
-      } catch (slackError) {
-        console.error('Failed to send payload inspection to Slack:', slackError);
-      }
-    }
-    
-    // 2. Verify webhook signature (if needed)
-    const signature = request.headers.get('x-channelio-signature') || '';
-    if (!verifyWebhookSignature(signature, rawBody)) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Invalid signature' }),
-        { status: 401 }
+    try {
+      await sendResponseToOperators(
+        'Webhook Received', 
+        `Received Channelio webhook:\n\nURL: ${request.url}\n\nToken: ${token || 'None'}\n\nPayload:\n\`\`\`json\n${JSON.stringify(body, null, 2) || rawBody}\n\`\`\``,
+        'This is a test message to show the webhook was received.',
+        ''
       );
+      console.log('Successfully sent Slack notification');
+    } catch (slackError) {
+      console.error('Failed to send to Slack:', slackError);
     }
     
+    // TEMPORARILY DISABLE SIGNATURE CHECK FOR TESTING
+    // const signature = request.headers.get('x-channelio-signature') || '';
+    // if (!verifyWebhookSignature(signature, rawBody)) {
+    //   return new NextResponse(
+    //     JSON.stringify({ error: 'Invalid signature' }),
+    //     { status: 401 }
+    //   );
+    // }
+    
+    // For debugging, let's just return a successful response to acknowledge the webhook
+    return NextResponse.json({ 
+      success: true,
+      message: 'Webhook received successfully',
+      timestamp: new Date().toISOString()
+    });
+    
+    /* Original processing logic commented out for debugging
     // 3. Extract inquiry details - This is tentative, based on examining the payload
     // We'll need to update this once we've seen the actual payload structure
     const {
@@ -135,23 +159,46 @@ export async function POST(request: NextRequest) {
     
     // 8. Return success response
     return NextResponse.json({ success: true });
+    */
     
   } catch (error) {
+    console.error('Error handling webhook:', error);
     return handleApiError(error, 'channelio-webhook');
   }
 }
 
 // Optionally implement GET for testing the endpoint
-export async function GET() {
-  console.log(`[${new Date().toISOString()}] Received GET request`);
+export async function GET(request: NextRequest) {
+  console.log(`[${new Date().toISOString()}] Received GET request: ${request.url}`);
+  
+  // Check if this is a Channelio request with token in URL
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token');
+  if (token) {
+    console.log(`[${new Date().toISOString()}] Found token in URL: ${token}`);
+  }
   
   // Return dummy response during build time
   if (isBuildTime) {
     return NextResponse.json({ status: 'ok', buildTime: true });
   }
   
+  // Try to send a test notification to Slack
+  try {
+    await sendResponseToOperators(
+      'GET Request Test', 
+      `Received GET request to webhook endpoint:\n\nURL: ${request.url}\n\nToken: ${token || 'None'}`,
+      'This confirms the endpoint is accessible via GET.',
+      ''
+    );
+    console.log('Successfully sent Slack notification for GET request');
+  } catch (slackError) {
+    console.error('Failed to send GET test to Slack:', slackError);
+  }
+  
   return NextResponse.json({ 
     status: 'ok',
-    message: 'Channelio webhook is ready to receive inquiries'
+    message: 'Channelio webhook is ready to receive inquiries',
+    timestamp: new Date().toISOString()
   });
 } 
