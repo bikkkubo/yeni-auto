@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
     body = JSON.parse(rawBody);
-  } catch (error) {
+  } catch (_error) {
     body = { error: 'Failed to parse body' };
   }
   
