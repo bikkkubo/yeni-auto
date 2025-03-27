@@ -18,8 +18,8 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
     body = JSON.parse(rawBody);
-  } catch (_) {
-    // Ignore parsing error and use default body
+  } catch {
+    // Empty catch block without variable
     body = { error: 'Failed to parse body' };
   }
   
