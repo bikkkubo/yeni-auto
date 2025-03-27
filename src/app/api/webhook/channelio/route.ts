@@ -43,6 +43,8 @@ function checkRequiredEnvVars() {
 }
 
 export async function POST(request: NextRequest) {
+  console.log(`[${new Date().toISOString()}] Received request for: ${request.url}`);
+  
   // Return dummy response during build time
   if (isBuildTime) {
     return NextResponse.json({ status: 'ok', buildTime: true });
@@ -52,8 +54,14 @@ export async function POST(request: NextRequest) {
     // Check required environment variables
     checkRequiredEnvVars();
     
+    // Log the request headers and method
+    console.log(`[${new Date().toISOString()}] Request method: ${request.method}`);
+    console.log(`[${new Date().toISOString()}] Request headers:`, Object.fromEntries(request.headers.entries()));
+    
     // 1. Get the raw request body for signature verification
     const rawBody = await request.text();
+    console.log(`[${new Date().toISOString()}] Request body:`, rawBody.substring(0, 500) + (rawBody.length > 500 ? '...' : ''));
+    
     const body = JSON.parse(rawBody);
     
     // Log the entire request payload and headers for inspection
@@ -135,6 +143,8 @@ export async function POST(request: NextRequest) {
 
 // Optionally implement GET for testing the endpoint
 export async function GET() {
+  console.log(`[${new Date().toISOString()}] Received GET request`);
+  
   // Return dummy response during build time
   if (isBuildTime) {
     return NextResponse.json({ status: 'ok', buildTime: true });
