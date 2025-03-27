@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function GET(request: NextRequest) {
   console.log(`[${new Date().toISOString()}] Test GET received: ${request.url}`);
   
@@ -17,7 +18,8 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
     body = JSON.parse(rawBody);
-  } catch (_error) {
+  } catch (_) {
+    // Ignore parsing error and use default body
     body = { error: 'Failed to parse body' };
   }
   
