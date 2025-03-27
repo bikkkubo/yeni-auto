@@ -4,6 +4,9 @@ import { findSimilarDocuments } from '@/lib/supabase/client';
 import { sendResponseToOperators } from '@/lib/slack/client';
 import { verifyWebhookSignature } from '@/lib/utils/errorHandler';
 
+// Check if we are in build mode
+const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
+
 // Error handling function without the circular dependency
 async function handleApiError(error: Error | unknown, context: string) {
   console.error(`[${context}] Error:`, error);
@@ -11,14 +14,44 @@ async function handleApiError(error: Error | unknown, context: string) {
   // Note: In a production app, we'd want to notify Slack here
   // but we're avoiding the circular dependency with the errorHandler
   
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+  
   return new NextResponse(
-    JSON.stringify({ error: 'Internal Server Error' }),
+    JSON.stringify({ error: 'Internal Server Error', details: errorMessage }),
     { status: 500 }
   );
 }
 
+// Function to check if all required environment variables are set
+function checkRequiredEnvVars() {
+  // Skip checks during build time
+  if (isBuildTime) return;
+  
+  const requiredVars = [
+    'OPENAI_API_KEY',
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SLACK_BOT_TOKEN',
+    'SLACK_CHANNEL_ID'
+  ];
+  
+  const missing = requiredVars.filter(name => !process.env[name]);
+  
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+}
+
 export async function POST(request: NextRequest) {
+  // Return dummy response during build time
+  if (isBuildTime) {
+    return NextResponse.json({ status: 'ok', buildTime: true });
+  }
+  
   try {
+    // Check required environment variables
+    checkRequiredEnvVars();
+    
     // 1. Get the raw request body for signature verification
     const rawBody = await request.text();
     const body = JSON.parse(rawBody);
@@ -69,6 +102,11 @@ export async function POST(request: NextRequest) {
 
 // Optionally implement GET for testing the endpoint
 export async function GET() {
+  // Return dummy response during build time
+  if (isBuildTime) {
+    return NextResponse.json({ status: 'ok', buildTime: true });
+  }
+  
   return NextResponse.json({ 
     status: 'ok',
     message: 'Channelio webhook is ready to receive inquiries'

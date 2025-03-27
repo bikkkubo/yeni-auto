@@ -1,10 +1,22 @@
 import { WebClient } from '@slack/web-api';
 
-if (!process.env.SLACK_BOT_TOKEN) {
-  throw new Error('Missing Slack bot token');
-}
+// Check if we are in build mode
+const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
 
-const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+// Initialize Slack client with build-time check
+const getSlackClient = () => {
+  if (isBuildTime) {
+    return new WebClient('dummy-token-for-build');
+  }
+
+  if (!process.env.SLACK_BOT_TOKEN) {
+    throw new Error('Missing Slack bot token');
+  }
+
+  return new WebClient(process.env.SLACK_BOT_TOKEN);
+};
+
+const slack = getSlackClient();
 
 /**
  * Send a notification to a specific Slack channel
@@ -13,6 +25,12 @@ export async function sendSlackNotification(
   message: string,
   channelId: string
 ): Promise<void> {
+  // Skip during build time
+  if (isBuildTime) {
+    console.log('[Build] Would send Slack notification:', message);
+    return;
+  }
+  
   try {
     await slack.chat.postMessage({
       channel: channelId,
@@ -35,6 +53,12 @@ export async function sendResponseToOperators(
   responseDraft: string,
   chatLink?: string
 ): Promise<void> {
+  // Skip during build time
+  if (isBuildTime) {
+    console.log('[Build] Would send response to operators');
+    return;
+  }
+  
   if (!process.env.SLACK_CHANNEL_ID) {
     throw new Error('Missing Slack channel ID');
   }
@@ -62,6 +86,12 @@ export async function sendErrorNotification(
   error: Error,
   context: string
 ): Promise<void> {
+  // Skip during build time
+  if (isBuildTime) {
+    console.log('[Build] Would send error notification:', error.message);
+    return;
+  }
+  
   if (!process.env.SLACK_ERROR_CHANNEL_ID) {
     console.error('Missing error channel ID, cannot send error notification');
     return;

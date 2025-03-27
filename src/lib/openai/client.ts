@@ -1,14 +1,26 @@
 import OpenAI from 'openai';
 import { Document } from '../supabase/client';
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('Missing OpenAI API key');
-}
+// Check if we are in build mode
+const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
 
-// Initialize the OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize the OpenAI client - moved initialization to a function to avoid build-time errors
+const getOpenAIClient = () => {
+  // Don't check API key during build time
+  if (isBuildTime) {
+    return new OpenAI({
+      apiKey: 'dummy-key-for-build',
+    });
+  }
+  
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('Missing OpenAI API key');
+  }
+  
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+};
 
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
 const COMPLETION_MODEL = 'gpt-3.5-turbo';
@@ -17,7 +29,13 @@ const COMPLETION_MODEL = 'gpt-3.5-turbo';
  * Generate embedding for a text string
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  // Return dummy embedding during build time
+  if (isBuildTime) {
+    return Array(1536).fill(0);
+  }
+  
   try {
+    const openai = getOpenAIClient();
     const response = await openai.embeddings.create({
       model: EMBEDDING_MODEL,
       input: text.replace(/\n/g, ' '),
@@ -37,7 +55,13 @@ export async function generateResponseDraft(
   inquiry: string,
   documents: Document[]
 ): Promise<string> {
+  // Return dummy response during build time
+  if (isBuildTime) {
+    return "This is a dummy response for build time";
+  }
+  
   try {
+    const openai = getOpenAIClient();
     // Construct a prompt with the inquiry and relevant documents
     const documentContext = documents
       .map((doc) => `---\n${doc.content}\n---`)
