@@ -66,3 +66,8 @@ Create a new automated response system from scratch. The system will receive inq
 - `generateResponseDraft(inquiry: string, documents: Document[]): Promise<string>`
 - `sendSlackNotification(message: string, channelId: string): Promise<void>`
 - The main webhook handler function in the API route.
+
+# TypeScript Best Practices
+- Never use the `any` type - use `unknown` for variables with unknown types
+- Always provide complete and accurate return types (e.g., `Promise<Error>` not `Promise<e>`)
+- Specify concrete return types for all async functions (e.g., `Promise<void>`, `Promise<string>`, etc.)
