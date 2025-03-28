@@ -101,15 +101,24 @@ export async function generateResponseDraft(inquiry: string, documents: Document
     // Combine the documents content
     const context = documents.map(doc => doc.content).join('\n\n');
 
+    console.log('=== RAG DEBUG INFO ===');
+    console.log('問い合わせ:', inquiry);
+    console.log('ドキュメント数:', documents.length);
+    console.log('コンテキスト内容:', context);
+
     const systemPrompt = `
 あなたは親切で丁寧な顧客サポートアシスタントです。
-以下の参考情報を使用して、問い合わせに対する回答を日本語で生成してください。
+以下の参考情報だけを使用して、問い合わせに対する回答を日本語で生成してください。
+参考情報に含まれていない事実や独自の情報は絶対に追加しないでください。
 回答は丁寧で、敬語を使い、簡潔に情報を提供してください。
 情報がない場合は、正直に「その情報は持ち合わせていません」と伝えてください。
+架空の情報や独自の推測は絶対に含めないでください。
 
 参考情報:
 ${context}
 `;
+
+    console.log('システムプロンプト:', systemPrompt);
 
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -117,11 +126,15 @@ ${context}
         { role: 'system', content: systemPrompt },
         { role: 'user', content: inquiry }
       ],
-      temperature: 0.7,
+      temperature: 0.3, // より確実な応答のために温度を下げる
       max_tokens: 500
     });
 
-    return response.choices[0].message.content || '申し訳ありませんが、回答を生成できませんでした。';
+    const responseContent = response.choices[0].message.content || '申し訳ありませんが、回答を生成できませんでした。';
+    console.log('AIの回答:', responseContent);
+    console.log('=== RAG DEBUG INFO END ===');
+
+    return responseContent;
   } catch (error) {
     console.error('回答の生成に失敗:', error);
     return '申し訳ありませんが、技術的な問題により回答を生成できませんでした。スタッフが直接対応いたします。';
