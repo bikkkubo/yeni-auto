@@ -18,6 +18,7 @@ export async function handleError(error: Error | unknown, context: string): Prom
 
 /**
  * Verify webhook signature function
+ * This is a placeholder for future implementation
  */
 export function verifyWebhookSignature(signature: string, body: string): boolean { 
   // Skip verification during build time
@@ -25,7 +26,8 @@ export function verifyWebhookSignature(signature: string, body: string): boolean
     return true;
   }
   
-  // Using both parameters to prevent unused parameter warnings
+  // This is a placeholder - should be implemented with proper signature verification
+  // in a production environment using HMAC or similar
   console.log(`Verifying signature: ${signature} for body length: ${body.length}`); 
   return true; 
 }
