@@ -89,11 +89,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate embedding for vector search
-    const embedding = await generateEmbedding(inquiry);
-    
-    // Find similar documents using vector search
-    const similarDocuments = await findSimilarDocuments(embedding);
+    // Find similar documents and generate response
+    // エンベディングなしで類似ドキュメントを取得
+    const similarDocuments = await findSimilarDocuments([]);
     
     // Generate response draft using RAG
     const responseDraft = await generateResponseDraft(inquiry, similarDocuments);
