@@ -194,7 +194,11 @@ export async function POST(request: NextRequest) {
         console.log("[DEBUG] Slack message sent successfully.");
       } catch (error) {
         console.error("[ERROR] Failed to send Slack message:", error);
-        await sendErrorNotification(error, "Slack Notification");
+        if (error instanceof Error) {
+          await sendErrorNotification(error, "Slack Notification");
+        } else {
+          console.error("[ERROR] Unknown error type:", error);
+        }
       }
       console.log(
         `[${requestId}] Slack通知送信完了 (所要時間: ${
@@ -237,7 +241,11 @@ export async function POST(request: NextRequest) {
           console.log("[DEBUG] Slack message sent successfully.");
         } catch (error) {
           console.error("[ERROR] Failed to send Slack message:", error);
-          await sendErrorNotification(error, "Slack Notification");
+          if (error instanceof Error) {
+            await sendErrorNotification(error, "Slack Notification");
+          } else {
+            console.error("[ERROR] Unknown error type:", error);
+          }
         }
         console.log(`[${requestId}] フォールバック処理完了`);
 
@@ -305,7 +313,11 @@ export async function GET(request: NextRequest) {
       console.log("[DEBUG] Slack message sent successfully.");
     } catch (error) {
       console.error("[ERROR] Failed to send Slack message:", error);
-      await sendErrorNotification(error, "Slack Notification");
+      if (error instanceof Error) {
+        await sendErrorNotification(error, "Slack Notification");
+      } else {
+        console.error("[ERROR] Unknown error type:", error);
+      }
     }
     console.log(`[${requestId}] GETリクエストのSlack通知を送信しました`);
   } catch (slackError) {
