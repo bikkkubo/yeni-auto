@@ -16,9 +16,14 @@ export async function handleError(error: Error | unknown, context: string): Prom
   return error instanceof Error ? error : new Error(String(error)); 
 }
 
+import * as crypto from 'crypto';
+
 /**
- * Verify webhook signature function
- * This is a placeholder for future implementation
+ * Verify webhook signature using HMAC
+ * 
+ * @param signature The signature provided in the request header
+ * @param body The raw request body as a string
+ * @returns boolean indicating if the signature is valid
  */
 export function verifyWebhookSignature(signature: string, body: string): boolean { 
   // Skip verification during build time
@@ -26,8 +31,24 @@ export function verifyWebhookSignature(signature: string, body: string): boolean
     return true;
   }
   
-  // This is a placeholder - should be implemented with proper signature verification
-  // in a production environment using HMAC or similar
-  console.log(`Verifying signature: ${signature} for body length: ${body.length}`); 
-  return true; 
+  if (!process.env.CHANNELIO_WEBHOOK_SECRET) {
+    console.warn('CHANNELIO_WEBHOOK_SECRET is not set - webhook validation is disabled');
+    return true;
+  }
+  
+  try {
+    // Recreate the signature using the shared secret
+    const hmac = crypto.createHmac('sha256', process.env.CHANNELIO_WEBHOOK_SECRET);
+    const digest = hmac.update(body).digest('hex');
+    
+    // Compare the signatures using a timing-safe function to prevent timing attacks
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(digest)
+    );
+  } catch (error) {
+    console.error('Error verifying webhook signature:', error);
+    // Fail closed - if we can't verify the signature, reject the request
+    return false;
+  }
 }

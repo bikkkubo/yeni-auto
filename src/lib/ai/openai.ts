@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { supabaseClient, Document as SupabaseDocument } from '@/lib/supabase/client';
 
 // Check if we are in build mode
 const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
@@ -42,7 +43,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 /**
- * Type for document with content and metadata
+ * Document type for our application
  */
 export interface Document {
   content: string;
@@ -50,11 +51,10 @@ export interface Document {
 }
 
 /**
- * Find similar documents based on embedding vector
- * In a real implementation, this would search a vector database
+ * Find similar documents based on embedding vector using pgvector search in Supabase
  */
 export async function findSimilarDocuments(embedding: number[]): Promise<Document[]> {
-  // Skip during build time or if no Supabase connection
+  // Skip during build time
   if (isBuildTime) {
     console.log('[Build] Would find similar documents for embedding');
     // Return dummy documents for testing
@@ -65,15 +65,35 @@ export async function findSimilarDocuments(embedding: number[]): Promise<Documen
     ];
   }
 
-  // In a production app, this would use Supabase with pgvector to perform a similarity search
-  console.log('類似ドキュメントを検索中...');
-  
-  // Dummy implementation for now
-  return [
-    { content: 'ノンワイヤーブラのサイズは、アンダーバスト（胸の下の周囲）とカップサイズによって決まります。' },
-    { content: '一般的なサイズ表: A70, B70, C70, D70, A75, B75, C75, D75, A80, B80, C80, D80, A85, B85, C85, D85' },
-    { content: 'サイズ選びで迷われた場合は、お気軽にチャットサポートでご相談ください。' }
-  ];
+  try {
+    console.log('Supabaseでベクトル検索を実行中...');
+    
+    const { data, error } = await supabaseClient.rpc('match_documents', {
+      query_embedding: embedding,
+      match_threshold: 0.7, // 類似度のしきい値
+      match_count: 5 // 取得する最大件数
+    });
+
+    if (error) {
+      console.error('ベクトル検索でエラーが発生:', error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      console.log('関連するドキュメントが見つかりませんでした');
+      return [];
+    }
+
+    // Supabaseから返されるドキュメントを我々のアプリケーション用の形式に変換
+    return data.map((doc: SupabaseDocument) => ({
+      content: doc.content,
+      metadata: doc.metadata
+    }));
+  } catch (error) {
+    console.error('類似ドキュメントの検索に失敗:', error);
+    // エラーが発生した場合でも、システムが完全に停止しないようにするため、空の配列を返す
+    return [];
+  }
 }
 
 /**

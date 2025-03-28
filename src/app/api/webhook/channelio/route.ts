@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendResponseToOperators } from '@/lib/slack/client';
 import { generateEmbedding, generateResponseDraft, findSimilarDocuments } from '@/lib/ai/openai';
+import { verifyWebhookSignature } from '@/lib/utils/errorHandler';
 
 // Check if we are in build mode
 const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
@@ -50,7 +51,22 @@ export async function POST(request: NextRequest) {
   try {
     checkRequiredEnvVars();
     
+    // Get the raw request body for signature verification
     const rawBody = await request.text();
+    
+    // Verify webhook signature if provided
+    const signature = request.headers.get('x-channelio-signature') || '';
+    if (signature) {
+      const isValid = verifyWebhookSignature(signature, rawBody);
+      if (!isValid) {
+        console.error('不正なwebhook署名');
+        return new NextResponse(
+          JSON.stringify({ error: '不正な署名' }),
+          { status: 401 }
+        );
+      }
+    }
+    
     let body;
     try {
       body = JSON.parse(rawBody);
@@ -73,8 +89,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate embedding and find similar documents
+    // Generate embedding for vector search
     const embedding = await generateEmbedding(inquiry);
+    
+    // Find similar documents using vector search
     const similarDocuments = await findSimilarDocuments(embedding);
     
     // Generate response draft using RAG
