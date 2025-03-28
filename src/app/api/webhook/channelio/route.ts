@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Extract inquiry details from the webhook payload
     const inquiry = body.message?.text || '';
+    const userName = body.user?.name || '不明な顧客';
     const chatId = body.chat?.id || '';
     
     if (!inquiry) {
@@ -89,27 +90,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find similar documents and generate response
-    // エンベディングなしで類似ドキュメントを取得
-    const similarDocuments = await findSimilarDocuments([]);
-    
-    // Generate response draft using RAG
-    const responseDraft = await generateResponseDraft(inquiry, similarDocuments);
+    console.log(`[Webhook] 問い合わせ: "${inquiry.substring(0, 100)}${inquiry.length > 100 ? '...' : ''}"`);
+    console.log(`[Webhook] ユーザー: "${userName}", チャットID: "${chatId}"`);
 
-    // Send to Slack for operator review
-    await sendResponseToOperators(
-      'お客様からの新規問い合わせ',
-      inquiry,
-      responseDraft,
-      chatId
-    );
-
-    return NextResponse.json({ 
-      success: true,
-      message: 'Webhookの処理が完了しました',
-      timestamp: new Date().toISOString()
-    });
-    
+    try {
+      // 埋め込みを生成
+      console.log('[Webhook] 埋め込みベクトルを生成中...');
+      const embedding = await generateEmbedding(inquiry);
+      console.log('[Webhook] 埋め込みベクトル生成完了 (次元数:', embedding.length, ')');
+      
+      // 類似ドキュメントを検索
+      console.log('[Webhook] 類似ドキュメントを検索中...');
+      const similarDocuments = await findSimilarDocuments(embedding);
+      console.log('[Webhook] 類似ドキュメント検索完了 (件数:', similarDocuments.length, ')');
+      
+      // 回答案を生成
+      console.log('[Webhook] AI回答案を生成中...');
+      const responseDraft = await generateResponseDraft(inquiry, similarDocuments);
+      console.log('[Webhook] AI回答案生成完了');
+      
+      // Slackに通知
+      console.log('[Webhook] Slackに通知送信中...');
+      await sendResponseToOperators(
+        'お客様からの新規問い合わせ',
+        inquiry,
+        responseDraft,
+        chatId
+      );
+      console.log('[Webhook] Slack通知送信完了');
+  
+      return NextResponse.json({ 
+        success: true,
+        message: 'Webhookの処理が完了しました',
+        timestamp: new Date().toISOString()
+      });
+    } catch (processingError) {
+      console.error('[Webhook] 処理中にエラーが発生:', processingError);
+      
+      // エラーが発生しても、できる限り回答を生成して送信するよう試みる
+      try {
+        const fallbackResponse = '申し訳ありませんが、技術的な問題により回答を生成できませんでした。スタッフが直接対応いたします。';
+        
+        await sendResponseToOperators(
+          'お客様からの新規問い合わせ (エラー発生)',
+          inquiry,
+          fallbackResponse,
+          chatId
+        );
+        
+        return NextResponse.json({ 
+          success: true,
+          message: 'エラーが発生しましたが、フォールバック処理を完了しました',
+          timestamp: new Date().toISOString()
+        });
+      } catch (fallbackError) {
+        // フォールバック処理も失敗した場合は元のエラーを返す
+        return handleApiError(processingError, 'channelio-webhook-processing');
+      }
+    }
   } catch (error) {
     console.error('Webhookの処理中にエラーが発生:', error);
     return handleApiError(error, 'channelio-webhook');

@@ -25,9 +25,8 @@ export async function sendSlackNotification(
   message: string,
   channelId: string
 ): Promise<void> {
-  // Skip during build time
   if (isBuildTime) {
-    console.log('[Build] Would send Slack notification:', message);
+    console.log('[Build] Would send Slack notification:', message.substring(0, 100) + '...');
     return;
   }
   
@@ -37,6 +36,7 @@ export async function sendSlackNotification(
       text: message,
       unfurl_links: false,
       unfurl_media: false,
+      mrkdwn: true
     });
   } catch (error) {
     console.error('Slack通知の送信に失敗:', error);
@@ -62,21 +62,31 @@ export async function sendResponseToOperators(
     throw new Error('Slackチャンネルが設定されていません');
   }
 
-  // Format the webhook payload as plain text
-  const webhookData = `受信内容:
-メッセージ: ${inquiry}
-ユーザー名: ${chatId ? 'テストユーザー' : '不明'}
-チャットID: ${chatId || 'なし'}`;
+  // ユーザーからの問い合わせを見やすく整形
+  const formattedInquiry = inquiry.trim();
+  
+  // AIの回答を見やすく整形
+  const formattedResponse = responseDraft.trim();
+  
+  // メタデータ部分
+  const metadata = `お客様ID: test-customer-123 | 会話ID: ${chatId || 'なし'} | 送信元: web`;
 
+  // 最終的なメッセージを構築
   const message = `*${title}*
 
-問い合わせ内容:
-${webhookData}
+*問い合わせ内容:*
+\`\`\`
+${formattedInquiry}
+\`\`\`
 
-AI生成の回答案:
-${responseDraft}
+*AI生成の回答案:*
+\`\`\`
+${formattedResponse}
+\`\`\`
 
-お客様ID: test-customer-123 | 会話ID: ${chatId} | 送信元: web`;
+${metadata}
+
+_この回答はAIによって自動生成されました。適切な修正を加えてからお客様へ返信してください。_`;
 
   await sendSlackNotification(message, process.env.SLACK_CHANNEL_ID);
 }
@@ -88,7 +98,6 @@ export async function sendErrorNotification(
   error: Error,
   context: string
 ): Promise<void> {
-  // Skip during build time
   if (isBuildTime) {
     console.log('[Build] Would send error notification:', error.message);
     return;

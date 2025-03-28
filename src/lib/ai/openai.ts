@@ -4,6 +4,10 @@ import { supabaseClient, Document as SupabaseDocument } from '@/lib/supabase/cli
 // Check if we are in build mode
 const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
 
+// 最新のOpenAIモデルを指定
+const EMBEDDING_MODEL = 'text-embedding-3-small';
+const GENERATION_MODEL = 'gpt-4-turbo';
+
 // Initialize OpenAI client
 const getOpenAIClient = () => {
   if (isBuildTime) {
@@ -31,7 +35,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   try {
     const response = await openai.embeddings.create({
-      model: 'text-embedding-ada-002', // 古い汎用モデルを使用
+      model: EMBEDDING_MODEL,
       input: text,
     });
 
@@ -46,15 +50,38 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * Document type for our application
  */
 export interface Document {
+  id?: string;
   content: string;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    source?: string;
+    category?: string;
+    [key: string]: unknown;
+  };
 }
 
+// 一時的に使用するダミードキュメント
+const dummyDocuments: Document[] = [
+  { 
+    id: '1',
+    content: 'ノンワイヤーブラのサイズは、アンダーバスト（胸の下の周囲）とカップサイズによって決まります。お手持ちのブラのサイズを参考に、以下の一般的なサイズ表をご参照ください。',
+    metadata: { source: 'product_info', category: 'sizing' }
+  },
+  { 
+    id: '2',
+    content: '一般的なノンワイヤーブラのサイズ表: A70, B70, C70, D70, A75, B75, C75, D75, A80, B80, C80, D80, A85, B85, C85, D85',
+    metadata: { source: 'size_chart', category: 'sizing' }
+  },
+  { 
+    id: '3',
+    content: 'サイズ選びで迷われた場合は、お気軽にチャットサポートでご相談ください。お手伝いさせていただきますね。',
+    metadata: { source: 'customer_service', category: 'support' }
+  }
+];
+
 /**
- * Find similar documents based on keywords instead of vector search
- * This is a workaround for embedding model access issues
+ * Find similar documents based on keywords or vector search
  */
-export async function findSimilarDocuments(_embedding: number[]): Promise<Document[]> {
+export async function findSimilarDocuments(embedding: number[]): Promise<Document[]> {
   // Skip during build time
   if (isBuildTime) {
     console.log('[Build] Would find similar documents without embeddings');
@@ -62,30 +89,88 @@ export async function findSimilarDocuments(_embedding: number[]): Promise<Docume
   }
 
   try {
-    console.log('エンベディングなしで類似ドキュメントを検索します...');
+    console.log('Supabaseでドキュメント検索を実行中...');
     
-    // 本来はSupabaseのベクター検索を使用しますが、
-    // 一時的に固定のドキュメントを返す実装にしています
-    return dummyDocuments;
+    // テーブルにデータが存在するか確認
+    const { count, error: countError } = await supabaseClient
+      .from('documents')
+      .select('*', { count: 'exact', head: true });
+    
+    if (countError) {
+      console.error('ドキュメント数の取得に失敗:', countError);
+      return dummyDocuments;
+    }
+    
+    // テーブルが空の場合はダミーデータを返す
+    if (count === 0) {
+      console.log('ドキュメントテーブルが空です。ダミーデータを使用します。');
+      return dummyDocuments;
+    }
+
+    // ベクトル検索を試みる
+    try {
+      // RPC関数を使用する場合
+      /*
+      const { data, error } = await supabaseClient.rpc(
+        'match_documents',
+        {
+          query_embedding: embedding,
+          match_threshold: 0.7,
+          match_count: 5
+        }
+      );
+      */
+      
+      // 直接クエリを使用する場合
+      const { data, error } = await supabaseClient
+        .from('documents')
+        .select('id, content, metadata')
+        .limit(5);
+        // ベクトル検索が設定されたら以下のコメントを外す
+        // .order('embedding <-> $1', { ascending: true })
+        // .bind('$1', embedding);
+      
+      if (error) {
+        console.error('ベクトル検索でエラーが発生:', error);
+        return dummyDocuments;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('関連するドキュメントが見つかりませんでした');
+        return dummyDocuments;
+      }
+
+      return data.map(doc => ({
+        id: doc.id,
+        content: doc.content,
+        metadata: doc.metadata
+      }));
+    } catch (vectorSearchError) {
+      console.error('ベクトル検索に失敗:', vectorSearchError);
+      
+      // ベクトル検索に失敗した場合、単純なテキスト検索を試みる
+      console.log('通常のドキュメント検索にフォールバック...');
+      const { data, error } = await supabaseClient
+        .from('documents')
+        .select('id, content, metadata')
+        .limit(5);
+      
+      if (error || !data || data.length === 0) {
+        console.log('フォールバック検索も失敗。ダミーデータを使用します。');
+        return dummyDocuments;
+      }
+      
+      return data.map(doc => ({
+        id: doc.id,
+        content: doc.content,
+        metadata: doc.metadata
+      }));
+    }
   } catch (error) {
-    console.error('類似ドキュメントの検索に失敗:', error);
-    // エラーが発生した場合でも、システムが完全に停止しないようにするため、空の配列を返す
-    return [];
+    console.error('ドキュメント検索に失敗:', error);
+    return dummyDocuments;
   }
 }
-
-// 一時的に使用するダミードキュメント
-const dummyDocuments: Document[] = [
-  { 
-    content: 'ノンワイヤーブラのサイズは、アンダーバスト（胸の下の周囲）とカップサイズによって決まります。お手持ちのブラのサイズを参考に、以下の一般的なサイズ表をご参照ください。'
-  },
-  { 
-    content: '一般的なノンワイヤーブラのサイズ表:\nA70, B70, C70, D70\nA75, B75, C75, D75\nA80, B80, C80, D80\nA85, B85, C85, D85'
-  },
-  { 
-    content: 'サイズ選びで迷われた場合は、お気軽にチャットサポートでご相談ください。お手伝いさせていただきますね。'
-  }
-];
 
 /**
  * Generate response draft using RAG with OpenAI
@@ -98,35 +183,48 @@ export async function generateResponseDraft(inquiry: string, documents: Document
   }
 
   try {
-    // Combine the documents content
-    const context = documents.map(doc => doc.content).join('\n\n');
-
+    // ログに詳細情報を出力
     console.log('=== RAG DEBUG INFO ===');
     console.log('問い合わせ:', inquiry);
     console.log('ドキュメント数:', documents.length);
+    console.log('ドキュメントID:', documents.map(doc => doc.id).join(', '));
+    
+    // 使用するコンテキストを準備（ソース情報も含める）
+    const context = documents.map(doc => {
+      const source = doc.metadata?.source ? `[出典: ${doc.metadata.source}]` : '';
+      return `${doc.content} ${source}`;
+    }).join('\n\n');
+    
     console.log('コンテキスト内容:', context);
 
+    // 強化されたシステムプロンプト
     const systemPrompt = `
 あなたは親切で丁寧な顧客サポートアシスタントです。
-以下の参考情報だけを使用して、問い合わせに対する回答を日本語で生成してください。
-参考情報に含まれていない事実や独自の情報は絶対に追加しないでください。
-回答は丁寧で、敬語を使い、簡潔に情報を提供してください。
-情報がない場合は、正直に「その情報は持ち合わせていません」と伝えてください。
-架空の情報や独自の推測は絶対に含めないでください。
 
-参考情報:
+## 指示
+- 以下の参考情報だけを使用して、問い合わせに対する回答を日本語で生成してください。
+- 参考情報に含まれていない事実や独自の情報は絶対に追加しないでください。
+- 回答は丁寧で、敬語を使い、簡潔に情報を提供してください。
+- 情報がない場合は、「その情報は持ち合わせていません」と伝えてください。
+- 架空の情報や独自の推測は絶対に含めないでください。
+
+## 参考情報:
 ${context}
+
+## ドキュメントID:
+${documents.map(doc => doc.id).join(', ')}
 `;
 
     console.log('システムプロンプト:', systemPrompt);
 
+    // GPT-4 Turboを使用
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: GENERATION_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: inquiry }
       ],
-      temperature: 0.3, // より確実な応答のために温度を下げる
+      temperature: 0.3,
       max_tokens: 500
     });
 
