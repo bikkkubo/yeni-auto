@@ -31,7 +31,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   try {
     const response = await openai.embeddings.create({
-      model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002',
+      model: 'text-embedding-ada-002', // 古い汎用モデルを使用
       input: text,
     });
 
