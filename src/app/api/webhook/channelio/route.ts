@@ -64,7 +64,6 @@ export async function POST(request: NextRequest) {
 
     // Extract inquiry details from the webhook payload
     const inquiry = body.message?.text || '';
-    const customerName = body.user?.name || '不明な顧客';
     const chatId = body.chat?.id || '';
     
     if (!inquiry) {
@@ -80,9 +79,6 @@ export async function POST(request: NextRequest) {
     
     // Generate response draft using RAG
     const responseDraft = await generateResponseDraft(inquiry, similarDocuments);
-
-    // Format the message in the expected structure
-    const formattedMessage = `問い合わせ内容:\n${inquiry}\n\nAI生成の回答案:\n${responseDraft}\n\nお客様ID: test-customer-123 | 会話ID: ${chatId} | 送信元: web`;
 
     // Send to Slack for operator review
     await sendResponseToOperators(

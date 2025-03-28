@@ -46,14 +46,14 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  */
 export interface Document {
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
  * Find similar documents based on embedding vector
  * In a real implementation, this would search a vector database
  */
-export async function findSimilarDocuments(embedding: number[], limit: number = 3): Promise<Document[]> {
+export async function findSimilarDocuments(embedding: number[]): Promise<Document[]> {
   // Skip during build time or if no Supabase connection
   if (isBuildTime) {
     console.log('[Build] Would find similar documents for embedding');
