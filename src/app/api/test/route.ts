@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
 export async function GET(request: NextRequest) {
   console.log(`[${new Date().toISOString()}] Test GET received: ${request.url}`);
   

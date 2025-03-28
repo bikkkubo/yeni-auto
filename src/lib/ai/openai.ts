@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
-import { supabaseClient, Document as SupabaseDocument } from '@/lib/supabase/client';
+import { supabaseClient } from '@/lib/supabase/client';
+import { channelioPrompt } from './prompts/channelioPrompt';
 
 // Check if we are in build mode
 const isBuildTime = process.env.NODE_ENV === 'production' && typeof process.env.VERCEL_URL === 'undefined';
@@ -90,6 +91,7 @@ export async function findSimilarDocuments(embedding: number[]): Promise<Documen
 
   try {
     console.log('Supabaseでドキュメント検索を実行中...');
+    console.log(`埋め込みベクトルの次元数: ${embedding.length}`);
     
     // テーブルにデータが存在するか確認
     const { count, error: countError } = await supabaseClient
@@ -236,5 +238,74 @@ ${documents.map(doc => doc.id).join(', ')}
   } catch (error) {
     console.error('回答の生成に失敗:', error);
     return '申し訳ありませんが、技術的な問題により回答を生成できませんでした。スタッフが直接対応いたします。';
+  }
+}
+
+/**
+ * Generate Channelio response using the new comprehensive prompt
+ */
+export async function generateChannelioResponse(
+  inquiry: string, 
+  documents: Document[], 
+  customerInfo: { 
+    name?: string;
+    email?: string;
+    orderHistory?: string;
+    channelType?: string;
+    inquiryCategory?: string;
+  } = {}
+): Promise<string> {
+  // Skip during build time
+  if (isBuildTime) {
+    console.log('[Build] Would generate Channelio response for:', inquiry.substring(0, 50));
+    return 'これはビルド時の仮の回答です。実際のデプロイ時には、OpenAI APIを使って生成された回答が表示されます。';
+  }
+
+  try {
+    // ログに詳細情報を出力
+    console.log('=== CHANNELIO RESPONSE GENERATION ===');
+    console.log('問い合わせ:', inquiry);
+    console.log('顧客情報:', customerInfo);
+    console.log('ドキュメント数:', documents.length);
+    console.log('ドキュメントID:', documents.map(doc => doc.id).join(', '));
+    
+    // 使用するFAQコンテキストを準備
+    const faqContext = documents.map(doc => {
+      return doc.content;
+    }).join('\n\n');
+    
+    console.log('FAQコンテキスト抜粋:', faqContext.substring(0, 200) + '...');
+
+    // プロンプトの変数を置換
+    const finalPrompt = channelioPrompt
+      .replace('{{customer_name}}', customerInfo.name || 'お客様')
+      .replace('{{customer_email}}', customerInfo.email || '未登録')
+      .replace('{{order_history}}', customerInfo.orderHistory || '注文履歴なし')
+      .replace('{{channel_type}}', customerInfo.channelType || 'Channelio')
+      .replace('{{inquiry_category}}', customerInfo.inquiryCategory || '一般的な問い合わせ')
+      .replace('{{specific_faq_context}}', faqContext)
+      .replace('{{user_inquiry}}', inquiry);
+    
+    console.log('最終プロンプト抜粋:', finalPrompt.substring(0, 200) + '...');
+
+    // GPT-4 Turboを使用
+    const response = await openai.chat.completions.create({
+      model: GENERATION_MODEL,
+      messages: [
+        { role: 'system', content: 'あなたは優秀なカスタマーサポートアシスタントです。以下の指示に従って回答を生成してください。' },
+        { role: 'user', content: finalPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 800
+    });
+
+    const responseContent = response.choices[0].message.content || '申し訳ありませんが、回答を生成できませんでした。';
+    console.log('AIの回答抜粋:', responseContent.substring(0, 200) + '...');
+    console.log('=== CHANNELIO RESPONSE GENERATION END ===');
+
+    return responseContent;
+  } catch (error) {
+    console.error('Channelio回答の生成に失敗:', error);
+    return '申し訳ございませんが、技術的な問題により回答を生成できませんでした。担当オペレーターが直接対応いたします。';
   }
 } 

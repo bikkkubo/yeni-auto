@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['sharp'],
-  },
+  serverExternalPackages: ['sharp'],
   env: {
     // Provide dummy values for build time
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'dummy-key-for-build',
